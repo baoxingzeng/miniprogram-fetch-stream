@@ -55,11 +55,14 @@ export function fetchP(input: RequestInfo | URL, init?: RequestInit): Promise<Re
 
                 // @ts-ignore
                 response.__Response__.headers = res.headers;
-                Object.defineProperty(response, "body", {
-                    configurable: true,
-                    enumerable: true,
-                    get: function body() { return res.body; },
-                });
+
+                if (enableChunked.value) {
+                    Object.defineProperty(response, "body", {
+                        configurable: true,
+                        enumerable: true,
+                        get: function body() { return res.body; },
+                    });
+                }
 
                 // @ts-ignore
                 let _payload = response.__Body__.payload = createPayload(res);
