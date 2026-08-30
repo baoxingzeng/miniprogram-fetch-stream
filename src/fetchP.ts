@@ -56,11 +56,11 @@ export function fetchP(input: RequestInfo | URL, init?: RequestInit): Promise<Re
                 // @ts-ignore
                 response.__Response__.headers = res.headers;
 
-                if (enableChunked.value) {
+                if ("body" in res) {
                     Object.defineProperty(response, "body", {
                         configurable: true,
                         enumerable: true,
-                        get: function body() { return res.body; },
+                        get: function body() { return res.body!; },
                     });
                 }
 
@@ -141,7 +141,7 @@ function createPayload(res: Awaited<IRequestStreamResult>) {
     let promise: Promise<string | ArrayBuffer> | null = null;
     return Object.defineProperty(payload, "promise", {
         get: function () {
-            if (!enableChunked.value) { return res.arrayBuffer!(); }
+            if ("arrayBuffer" in res) { return res.arrayBuffer(); }
             if (promise) return promise;
 
             let reader = res.body!.getReader();
@@ -226,7 +226,7 @@ function MiniProgram_request<T extends IRequestInitOptions>(input: string, init?
                     headers: responseHeaders,
                 };
 
-                if (enableChunked.value) {
+                if (mp.ReadableStream) {
                     let ReadableStreamClass = getReadableStreamClass();
                     result.body = new ReadableStreamClass<Uint8Array<ArrayBuffer>>({
                         start(controller) {
