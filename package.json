@@ -1,0 +1,74 @@
+{
+  "name": "miniprogram-fetch-stream",
+  "version": "0.0.1",
+  "license": "MIT",
+  "author": "Xingzeng Bao",
+  "homepage": "https://github.com/baoxingzeng/miniprogram-fetch-stream",
+  "description": "W3C-compliant fetch polyfill for mini programs.",
+  "type": "module",
+  "main": "dist/miniprogram-fetch-stream.cjs.js",
+  "module": "dist/miniprogram-fetch-stream.esm.js",
+  "unpkg": "dist/miniprogram-fetch-stream.umd.js",
+  "jsdelivr": "dist/miniprogram-fetch-stream.umd.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "README.md",
+    "dist",
+    "helpers",
+    "internal",
+    "!dist/types/**/*",
+    "!dist/cjs/types/**/*",
+    "!dist/esm/types/**/*"
+  ],
+  "exports": {
+    ".": {
+      "require": "./dist/cjs/index.js",
+      "import": "./dist/esm/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./helpers": {
+      "require": "./dist/cjs/helpers.js",
+      "import": "./dist/esm/helpers.js",
+      "types": "./dist/helpers.d.ts"
+    },
+    "./internal": {
+      "require": "./dist/cjs/internal.js",
+      "import": "./dist/esm/internal.js",
+      "types": "./dist/internal.d.ts"
+    }
+  },
+  "sideEffects": false,
+  "scripts": {
+    "build": "rollup --config",
+    "test": "echo \"Follow the instructions in tests/README.txt to run the tests.\" && exit 1"
+  },
+  "keywords": [
+    "miniprogram",
+    "fetch",
+    "stream",
+    "polyfill",
+    "weixin",
+    "wechat"
+  ],
+  "dependencies": {
+    "fetch-xhr-shim": "^1.2.0",
+    "miniprogram-platform": "^1.2.0"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.29.7",
+    "@babel/preset-env": "^7.29.7",
+    "@rollup/plugin-babel": "^7.1.0",
+    "@rollup/plugin-node-resolve": "^16.0.3",
+    "@rollup/plugin-terser": "^1.0.0",
+    "@rollup/plugin-typescript": "^12.3.0",
+    "cors": "^2.8.6",
+    "express": "^5.2.1",
+    "formidable": "^3.5.4",
+    "rollup": "^4.61.0",
+    "rollup-plugin-dts": "^6.4.1",
+    "tslib": "^2.8.1",
+    "typescript": "^6.0.0",
+    "uvu": "^0.5.6",
+    "web-streams-polyfill": "^4.3.0"
+  }
+}

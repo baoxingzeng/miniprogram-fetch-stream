@@ -1,0 +1,7 @@
+{
+  "name": "miniprogram-fetch-stream/internal",
+  "types": "../dist/internal.d.ts",
+  "main": "../dist/cjs/internal.js",
+  "module": "../dist/esm/internal.js",
+  "sideEffects": false
+}

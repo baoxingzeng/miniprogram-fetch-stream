@@ -1,0 +1,7 @@
+{
+  "name": "miniprogram-fetch-stream/helpers",
+  "types": "../dist/helpers.d.ts",
+  "main": "../dist/cjs/helpers.js",
+  "module": "../dist/esm/helpers.js",
+  "sideEffects": false
+}
