@@ -191,225 +191,220 @@ export function useCookie(accessor: { get: TGetCookieFn; set: TSetCookieFn; }) {
 }
 
 function MiniProgram_request<T extends IRequestInitOptions>(input: string, init?: T): IRequestStreamResult {
-    let signal = !!init && typeof init === "object" && isEventTarget(init.signal) && init.signal;
-    let saveCookie: ((res: ReturnType<typeof getHeaders>, responseHeaders: Headers) => void) | null = null;
+    return new Promise(function (resolve, reject) {
+        let resolved = false, rejected = false;
+        let signal = !!init && typeof init === "object" && isEventTarget(init.signal) && init.signal;
+        let saveCookie: ((res: ReturnType<typeof getHeaders>, responseHeaders: Headers) => void) | null = null;
 
-    let ctrl = {
-        enqueue: null as null | ((chunk: Uint8Array<ArrayBuffer>) => void),
-        close: null as null | (() => void),
-        error: null as null | ((e?: any) => void),
-    };
+        let ctrl = {
+            enqueue: null as null | ((chunk: Uint8Array<ArrayBuffer>) => void),
+            close: null as null | (() => void),
+            error: null as null | ((e?: any) => void),
+        };
 
-    let responseDeferred = {
-        resolve: null as null | ((value: Awaited<IRequestStreamResult>) => void),
-        reject: null as null | ((e?: any) => void),
-    };
+        function requestSuccess(res: IRequestSuccessCallbackBaseResult) {
+            setTimeout(function () {
+                if (ctrl.close) { ctrl.close(); }
+                if (signal) { signal.removeEventListener("abort", safeAbort); }
 
-    let resolved = false;
-    let rejected = false;
+                if (!resolved) {
+                    let resHeader = getHeaders(res);
+                    let responseHeaders = new Headers(resHeader.header as Record<string, string>);
 
-    function requestSuccess(res: IRequestSuccessCallbackBaseResult) {
-        setTimeout(function () {
-            if (ctrl.close) { ctrl.close(); }
-            if (signal) { signal.removeEventListener("abort", safeAbort); }
+                    if (saveCookie) {
+                        saveCookie(resHeader, responseHeaders);
+                    }
 
-            if (!resolved && responseDeferred.resolve) {
-                let resHeader = getHeaders(res);
-                let responseHeaders = new Headers(resHeader.header as Record<string, string>);
+                    let response: Awaited<IRequestStreamResult> = {
+                        status: resHeader.statusCode,
+                        headers: responseHeaders,
+                    };
 
-                if (saveCookie) {
-                    saveCookie(resHeader, responseHeaders);
+                    if (mp.ReadableStream) {
+                        let ReadableStreamClass = getReadableStreamClass();
+                        response.body = new ReadableStreamClass<Uint8Array<ArrayBuffer>>({
+                            start(controller) {
+                                controller.enqueue(new Uint8Array(getResponse(res)));
+                                controller.close();
+                            },
+                        });
+                    } else {
+                        response.arrayBuffer = function () { return Promise.resolve(getResponse(res)); }
+                    }
+
+                    resolved = true;
+                    resolve(response);
                 }
+            }, 0);
+        }
 
-                let result: Awaited<IRequestStreamResult> = {
-                    status: resHeader.statusCode,
-                    headers: responseHeaders,
-                };
+        function requestFail(err: IRequestFailCallbackResult) {
+            // Alipay Mini Program
+            if (("header" in err && "statusCode" in err) || ("headers" in err && "status" in err)) {
+                let resHeader = getHeaders(err as { header: object; statusCode: number; });
 
-                if (mp.ReadableStream) {
-                    let ReadableStreamClass = getReadableStreamClass();
-                    result.body = new ReadableStreamClass<Uint8Array<ArrayBuffer>>({
-                        start(controller) {
-                            controller.enqueue(new Uint8Array(getResponse(res)));
-                            controller.close();
-                        },
+                return requestSuccess({
+                    statusCode: resHeader.statusCode,
+                    header: resHeader.header,
+                    cookies: resHeader.cookies!,
+                    data: "data" in err ? err.data as string | object | ArrayBuffer || "" : "",
+                });
+            }
+
+            setTimeout(function () {
+                if (ctrl.error) { ctrl.error(err); }
+                if (signal) { signal.removeEventListener("abort", safeAbort); }
+
+                if (!rejected) {
+                    rejected = true;
+                    reject(err);
+                }
+            }, 0);
+        }
+
+        let reqopts: IRequestOptions = {
+            url: "" + input,
+            method: (init?.method || "GET") as NonNullable<IRequestOptions["method"]>,
+            header: (init?.headers || init?.header) as NonNullable<IRequestOptions["header"]>,
+            data: init?.body || init?.data,
+            dataType: "arraybuffer",
+            responseType: "arraybuffer",
+            withCredentials: init?.withCredentials || false,
+            success: requestSuccess,
+            fail: requestFail,
+        };
+
+        if (enableChunked.value) {
+            reqopts.enableChunked = true;
+        }
+
+        if (CookieAccessor.get) {
+            let hasCookie = false;
+            if (reqopts.header && typeof reqopts.header === "object") {
+                let names = Object.getOwnPropertyNames(reqopts.header);
+                for (let i = 0; i < names.length; ++i) {
+                    let name = names[i]!;
+                    if (name.toLowerCase() === "cookie") {
+                        hasCookie = true;
+                        break;
+                    }
+                }
+            }
+
+            if (!hasCookie) {
+                let cookie = CookieAccessor.get(reqopts.url, reqopts.withCredentials);
+                if (cookie) {
+                    reqopts.enableCookie = true;    // Alipay Mini Program
+                    (reqopts.header as Record<string, string>)["Cookie"] = cookie;
+                }
+            }
+        }
+
+        if (CookieAccessor.set) {
+            saveCookie = function (res, responseHeaders) {
+                let cookies = ("cookies" in res && Array.isArray(res.cookies)) ? res.cookies : (responseHeaders.get("Set-Cookie") || "");
+                if (cookies.length > 0) {
+                    CookieAccessor.set!(reqopts.url, reqopts.withCredentials, cookies);
+                }
+            }
+        }
+
+        if (!!init && typeof init === "object") {
+            let excludeKeys = Object.getOwnPropertyNames(reqopts).concat(["headers", "body", "signal"]);
+            let keys = Object.getOwnPropertyNames(init);
+
+            for (let i = 0; i < keys.length; ++i) {
+                let key = keys[i]!;
+                if (excludeKeys.indexOf(key) < 0) {
+                    // @ts-ignore
+                    reqopts[key] = init[key];
+                }
+            }
+        }
+
+        reqopts.headers = reqopts.header!;  // Alipay Mini Program
+        let requestTask = mp.request(reqopts);
+
+        function safeAbort() {
+            let aborted = false;
+            if (!!requestTask && typeof requestTask === "object") {
+                if ("abort" in requestTask && typeof requestTask.abort === "function") {
+                    aborted = true;
+                    requestTask.abort();
+                }
+            }
+
+            setTimeout(function () {
+                if (!aborted && !rejected) {
+                    rejected = true;
+                    reject(createAbortException());
+                }
+            }, 0);
+        }
+
+        if (signal) {
+            signal.addEventListener("abort", safeAbort);
+        }
+
+        function shouldContinue() {
+            return enableChunked.value
+                && !!requestTask && typeof requestTask === "object"
+                && "onHeadersReceived" in requestTask && "onChunkReceived" in requestTask;
+        }
+
+        if (!shouldContinue()) return;
+        let ReadableStreamClass = getReadableStreamClass();
+
+        let stream: ReadableStream<Uint8Array<ArrayBuffer>> | null = null;
+        function setStream(val: ReadableStream<Uint8Array<ArrayBuffer>>) { stream = val; }
+
+        function headersHandler(res: IHeadersReceivedResult) {
+            setTimeout(function () {
+                if (!resolved) {
+                    let resHeader = getHeaders(res);
+                    let responseHeaders = new Headers(resHeader.header as Record<string, string>);
+
+                    if (saveCookie) {
+                        saveCookie(resHeader, responseHeaders);
+                    }
+
+                    resolved = true;
+                    resolve({
+                        status: resHeader.statusCode,
+                        headers: responseHeaders,
+                        body: stream,
                     });
-                } else {
-                    result.arrayBuffer = function () { return Promise.resolve(getResponse(res)); }
                 }
-
-                resolved = true;
-                responseDeferred.resolve(result);
-            }
-        }, 0);
-    }
-
-    function requestFail(err: IRequestFailCallbackResult) {
-        // Alipay Mini Program
-        if (("header" in err && "statusCode" in err) || ("headers" in err && "status" in err)) {
-            let resHeader = getHeaders(err as { header: object; statusCode: number; });
-
-            return requestSuccess({
-                statusCode: resHeader.statusCode,
-                header: resHeader.header,
-                cookies: resHeader.cookies!,
-                data: "data" in err ? err.data as string | object | ArrayBuffer || "" : "",
-            });
+            }, 0);
         }
 
-        setTimeout(function () {
-            if (ctrl.error) { ctrl.error(err); }
-            if (signal) { signal.removeEventListener("abort", safeAbort); }
-
-            if (!rejected && responseDeferred.reject) {
-                rejected = true;
-                responseDeferred.reject(err);
-            }
-        }, 0);
-    }
-
-    let reqopts: IRequestOptions = {
-        url: "" + input,
-        method: (init?.method || "GET") as NonNullable<IRequestOptions["method"]>,
-        header: (init?.headers || init?.header) as NonNullable<IRequestOptions["header"]>,
-        data: init?.body || init?.data,
-        dataType: "arraybuffer",
-        responseType: "arraybuffer",
-        withCredentials: init?.withCredentials || false,
-        success: requestSuccess,
-        fail: requestFail,
-    };
-
-    if (enableChunked.value) {
-        reqopts.enableChunked = true;
-    }
-
-    if (CookieAccessor.get) {
-        let hasCookie = false;
-        if (reqopts.header && typeof reqopts.header === "object") {
-            let names = Object.getOwnPropertyNames(reqopts.header);
-            for (let i = 0; i < names.length; ++i) {
-                let name = names[i]!;
-                if (name.toLowerCase() === "cookie") {
-                    hasCookie = true;
-                    break;
-                }
+        function chunkHandler(res: IChunkReceivedResult) {
+            if (ctrl.enqueue) {
+                ctrl.enqueue(new Uint8Array(getResponse(res)));
             }
         }
 
-        if (!hasCookie) {
-            let cookie = CookieAccessor.get(reqopts.url, reqopts.withCredentials);
-            if (cookie) {
-                reqopts.enableCookie = true;    // Alipay Mini Program
-                (reqopts.header as Record<string, string>)["Cookie"] = cookie;
-            }
-        }
-    }
-
-    if (CookieAccessor.set) {
-        saveCookie = function (res, responseHeaders) {
-            let cookies = ("cookies" in res && Array.isArray(res.cookies)) ? res.cookies : (responseHeaders.get("Set-Cookie") || "");
-            if (cookies.length > 0) {
-                CookieAccessor.set!(reqopts.url, reqopts.withCredentials, cookies);
-            }
-        }
-    }
-
-    if (!!init && typeof init === "object") {
-        let excludeKeys = Object.getOwnPropertyNames(reqopts).concat(["headers", "body", "signal"]);
-        let keys = Object.getOwnPropertyNames(init);
-
-        for (let i = 0; i < keys.length; ++i) {
-            let key = keys[i]!;
-            if (excludeKeys.indexOf(key) < 0) {
-                // @ts-ignore
-                reqopts[key] = init[key];
-            }
-        }
-    }
-
-    reqopts.headers = reqopts.header!;  // Alipay Mini Program
-    let requestTask = mp.request(reqopts);
-
-    function safeAbort() {
-        let aborted = false;
-        if (!!requestTask && typeof requestTask === "object") {
-            if ("abort" in requestTask && typeof requestTask.abort === "function") {
-                aborted = true;
-                requestTask.abort();
+        function dispose() {
+            if ("offHeadersReceived" in requestTask && "offChunkReceived" in requestTask) {
+                requestTask.offHeadersReceived(headersHandler);
+                requestTask.offChunkReceived(chunkHandler);
             }
         }
 
-        setTimeout(function () {
-            if (!aborted && !rejected && responseDeferred.reject) {
-                rejected = true;
-                responseDeferred.reject(createAbortException());
-            }
-        }, 0);
-    }
+        setStream(new ReadableStreamClass<Uint8Array<ArrayBuffer>>({
+            start(controller) {
+                requestTask.onHeadersReceived(headersHandler);
+                requestTask.onChunkReceived(chunkHandler);
 
-    if (signal) {
-        signal.addEventListener("abort", safeAbort);
-    }
-
-    if (enableChunked.value && !!requestTask && typeof requestTask === "object") {
-        if ("onHeadersReceived" in requestTask && "onChunkReceived" in requestTask) {
-            let ReadableStreamClass = getReadableStreamClass();
-            let stream = new ReadableStreamClass<Uint8Array<ArrayBuffer>>((function () {
-                function headersHandler(res: IHeadersReceivedResult) {
-                    setTimeout(function () {
-                        if (!resolved && responseDeferred.resolve) {
-                            let resHeader = getHeaders(res);
-                            let responseHeaders = new Headers(resHeader.header as Record<string, string>);
-
-                            if (saveCookie) {
-                                saveCookie(resHeader, responseHeaders);
-                            }
-
-                            resolved = true;
-                            responseDeferred.resolve({
-                                status: resHeader.statusCode,
-                                headers: responseHeaders,
-                                body: stream,
-                            });
-                        }
-                    }, 0);
-                }
-
-                function chunkHandler(res: IChunkReceivedResult) {
-                    if (ctrl.enqueue) {
-                        ctrl.enqueue(new Uint8Array(getResponse(res)));
-                    }
-                }
-
-                function dispose() {
-                    if ("offHeadersReceived" in requestTask && "offChunkReceived" in requestTask) {
-                        requestTask.offHeadersReceived(headersHandler);
-                        requestTask.offChunkReceived(chunkHandler);
-                    }
-                }
-
-                return {
-                    start(controller: ReadableStreamDefaultController<Uint8Array<ArrayBuffer>>) {
-                        requestTask.onHeadersReceived(headersHandler);
-                        requestTask.onChunkReceived(chunkHandler);
-
-                        ctrl.enqueue = function (chunk) { controller.enqueue(chunk); }
-                        ctrl.close = function () { dispose(); controller.close(); }
-                        ctrl.error = function (e) { dispose(); controller.error(e); }
-                    },
-                    cancel() {
-                        dispose();
-                        safeAbort();
-                    },
-                };
-            })());
-        }
-    }
-
-    return new Promise(function (resolve: ((value: Awaited<IRequestStreamResult>) => void), reject) {
-        responseDeferred.resolve = resolve;
-        responseDeferred.reject = reject;
+                ctrl.enqueue = function (chunk) { controller.enqueue(chunk); }
+                ctrl.close = function () { dispose(); controller.close(); }
+                ctrl.error = function (e) { dispose(); controller.error(e); }
+            },
+            cancel() {
+                dispose();
+                safeAbort();
+            },
+        }));
     });
 }
 
