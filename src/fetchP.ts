@@ -27,7 +27,7 @@ export function setReadableStreamClass(RSClass: unknown) {
     setRSC(RSClass); mp.ReadableStream = RSClass as typeof ReadableStream;
 }
 
-export function fetchP(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {   // @ts-expect-error
+function MiniProgram_fetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {   // @ts-expect-error
     if (this instanceof fetchP) { throw new TypeError("fetch is not a constructor"); }
     checkArgsLength(arguments.length, 1, "globalThis", "fetch");
 
@@ -430,6 +430,11 @@ function getResponse(res: { data: string | ArrayBuffer | object; }): ArrayBuffer
             ? data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer
             : encode(typeof data === "string" ? data : JSON.stringify(data)).buffer;
 }
+
+export const fetchP = /*#__PURE__*/function () {    // @ts-expect-error
+    MiniProgram_fetch["__MPHTTPX__Polyfill__"] = true;
+    return MiniProgram_fetch;
+}();
 
 const fetchE = /*#__PURE__*/function () { return (typeof fetch !== "undefined" && fetch) as typeof fetch || fetchP; }();
 export { fetchE as fetch, MiniProgram_request as request };
