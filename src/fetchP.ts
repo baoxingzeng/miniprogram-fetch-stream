@@ -191,7 +191,7 @@ export function useCookie(accessor: { get: TGetCookieFn; set: TSetCookieFn; }) {
 }
 
 function MiniProgram_request<T extends IRequestInitOptions>(input: string, init?: T): IRequestStreamResult {
-    return new Promise(function (resolve, reject) {
+    return new Promise(function (resolve: ((value: Awaited<IRequestStreamResult>) => void), reject: ((reason?: any) => void)) {
         let resolved = false, rejected = false;
         let signal = !!init && typeof init === "object" && isEventTarget(init.signal) && init.signal;
         let saveCookie: ((res: ReturnType<typeof getHeaders>, responseHeaders: Headers) => void) | null = null;
@@ -346,7 +346,7 @@ function MiniProgram_request<T extends IRequestInitOptions>(input: string, init?
             signal.addEventListener("abort", safeAbort);
         }
 
-        function shouldContinue() {
+        function shouldContinue() { // ReadableStream (Response#body)
             return enableChunked.value
                 && !!requestTask && typeof requestTask === "object"
                 && "onHeadersReceived" in requestTask && "onChunkReceived" in requestTask;
@@ -392,7 +392,7 @@ function MiniProgram_request<T extends IRequestInitOptions>(input: string, init?
         }
 
         setStream(new ReadableStreamClass<Uint8Array<ArrayBuffer>>({
-            start(controller) {
+            start(controller: ReadableStreamDefaultController<Uint8Array<ArrayBuffer>>) {
                 requestTask.onHeadersReceived(headersHandler);
                 requestTask.onChunkReceived(chunkHandler);
 
