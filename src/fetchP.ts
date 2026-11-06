@@ -27,7 +27,7 @@ export function setReadableStreamClass(RSClass: unknown) {
     setRSC(RSClass); mp.ReadableStream = RSClass as typeof ReadableStream;
 }
 
-function MiniProgram_fetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {   // @ts-expect-error
+function MiniProgram_fetch(input: RequestInfo | URL, init?: RequestInit & { enableChunked?: boolean }): Promise<Response> {   // @ts-expect-error
     if (this instanceof fetchP) { throw new TypeError("fetch is not a constructor"); }
     checkArgsLength(arguments.length, 1, "globalThis", "fetch");
 
@@ -78,6 +78,12 @@ function MiniProgram_fetch(input: RequestInfo | URL, init?: RequestInit): Promis
             method: request.method,
             headers: {},
         };
+
+        if (init && typeof init === "object") {
+            if ("enableChunked" in init && init.enableChunked !== undefined) {
+                reqopts.enableChunked = init.enableChunked;
+            }
+        }
 
         if (request.credentials === "include") {
             reqopts.withCredentials = true;
@@ -278,6 +284,12 @@ function MiniProgram_request<T extends IRequestInitOptions>(input: string, init?
             reqopts.enableChunked = true;
         }
 
+        if (init && typeof init === "object") {
+            if ("enableChunked" in init && init.enableChunked !== undefined) {
+                reqopts.enableChunked = !!init.enableChunked;
+            }
+        }
+
         if (CookieAccessor.get) {
             let hasCookie = false;
             if (reqopts.header && typeof reqopts.header === "object") {
@@ -413,6 +425,7 @@ function getHeaders(res: Omit<IHeadersReceivedResult, "cookies"> & { cookies?: s
         header: ("header" in res ? res.header : "headers" in res ? (res as IRequestSuccessCallbackBaseResult).headers! : {}) as Record<string, string>,
         statusCode: "statusCode" in res ? res.statusCode : "status" in res ? (res as IRequestSuccessCallbackBaseResult).status! : 200,
     };
+
     if ("cookies" in res && !!res.cookies) { result.cookies = res.cookies; }
     return result;
 }
